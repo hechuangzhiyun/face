@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@mdi/font@4.x/css/materialdesignicons.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.css" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+</head>
+<body>
+<div id="app">
+    <v-app>
+        <v-content>
+            <v-container>
+                <video style="width: 500px;height: 300px;" ref="video" controls></video>
+                <img style="width: 500px;height: 300px;" ref="screenshot" alt="">
+            </v-container>
+        </v-content>
+    </v-app>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/vue@2.x/dist/vue.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.js"></script>
+<script>
+    new Vue({
+        el: '#app',
+        vuetify: new Vuetify(),
+        mounted() {
+            const that = this
+
+            navigator.mediaDevices.getUserMedia({
+                video: {
+                    width: 500,
+                    height: 300
+                },
+                audio: true
+            }).then((mediaStream) => {
+                const video = this.$refs.video
+                video.srcObject = mediaStream
+                video.play()
+
+                setInterval(function () {
+                    that.screenshot(video).then((canvas) => {
+                        const dataUrl = canvas.toDataURL("image/png");
+                        const img = new Image()
+                        img.src = dataUrl
+                        that.detect(img, canvas)
+                    })
+                }, 1000)
+            })
+        },
+        methods: {
+            screenshot(video) {
+                return new Promise((resolve) => {
+                    const canvas = document.createElement("canvas");
+                    canvas.width = 500
+                    canvas.height = 300
+                    const ctx = canvas.getContext("2d");
+                    ctx.drawImage(video, 0, 0, 500, 300, 0, 0, 500, 300);
+                    resolve(canvas)
+                })
+            },
+            detect(input, canvas) {
+                const screenshot = this.$refs.screenshot
+                const modelUrl = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@latest/weights/'
+                ;(async function () {
+                    await window.faceapi.nets.ssdMobilenetv1.loadFromUri(modelUrl)
+                    await window.faceapi.nets.ageGenderNet.loadFromUri(modelUrl)
+                    await window.faceapi.nets.faceLandmark68Net.loadFromUri(modelUrl)
+                    await window.faceapi.nets.faceExpressionNet.loadFromUri(modelUrl)
+                    const result = await window.faceapi.detectSingleFace(input).withFaceLandmarks().withAgeAndGender().withFaceExpressions()
+                    console.log(result);
+
+                    // 画人脸框
+                    const box = result.detection.box
+                    const ctx = canvas.getContext('2d')
+                    ctx.strokeStyle = '#0000ff';
+                    ctx.strokeRect(box.left, box.top, box.width, box.height);
+
+                    // 检测表情
+                    const expressionDir = {
+                        angry: '生气',
+                        disgusted: '厌烦',
+                        fearful: '害怕',
+                        happy: '高兴',
+                        neutral: '平淡',
+                        sad: '难过',
+                        surprised: '惊讶'
+                    }
+                    let max = 0
+                    let expression = ''
+                    Object.keys(result.expressions).forEach((key) => {
+                        if (result.expressions[key] > max) {
+                            max = result.expressions[key]
+                            expression = key
+                        }
+                    })
+                    const expressionResult = expressionDir[expression]
+
+                    ctx.font = "bold 26px serif";
+                    ctx.fillStyle = "#0000ff"
+                    let startRight = box.top
+                    let gender;
+                    if (result.gender === 'male') {
+                        gender = '男'
+                    } else {
+                        gender = '女'
+                    }
+                    const maleText = "性别：" + gender
+                    const ageText = "年龄：" + Math.trunc(result.age)
+                    const expressionText = "表情：" + expressionResult
+
+                    ctx.fillText(maleText, box.right + 20, startRight);
+                    ctx.fillText(ageText, box.right + 20, startRight + 30);
+                    ctx.fillText(expressionText, box.right + 20, startRight + 60);
+
+                    screenshot.src = canvas.toDataURL()
+                })()
+            }
+        }
+    })
+</script>
+</body>
+</html>
